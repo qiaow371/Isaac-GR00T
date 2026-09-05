@@ -25,7 +25,10 @@ from omegaconf import OmegaConf
 import torch
 import torch.distributed as dist
 from transformers import TrainingArguments, set_seed
-import wandb
+try:
+    import wandb
+except ImportError:
+    wandb = None
 
 from gr00t.configs.base_config import Config
 from gr00t.configs.training.training_config import check_resume_compatibility

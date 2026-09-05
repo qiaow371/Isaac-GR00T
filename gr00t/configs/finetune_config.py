@@ -179,6 +179,12 @@ class FinetuneConfig:
     episode_sampling_rate: float = 0.1
     """Sampling rate for the episodes."""
 
+    allow_padding: bool = False
+    """If True, clip out-of-range action/state indices to the episode boundary
+    (repeat the last frame to fill the action chunk). Also includes the last
+    H-1 frames as sample starts. Folder names should mark this, e.g.
+    ``finetune_*_allow_padding``."""
+
     num_shards_per_epoch: int = int(1e5)
     """Number of shards to use for the dataset. reduce this number if vram is limited."""
 
