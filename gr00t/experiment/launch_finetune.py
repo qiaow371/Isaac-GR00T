@@ -97,7 +97,9 @@ if __name__ == "__main__":
 
     config.model.load_bf16 = False
     config.model.reproject_vision = False
-    config.model.model_name = "nvidia/Cosmos-Reason2-2B"
+    # GR00T_BACKBONE_PATH: 本地替身目录 (Qwen3-VL-2B-Instruct, 与 Cosmos-Reason2-2B 同架构),
+    # 用于绕开 gated repo 无法下载的问题; 不设置时用官方 repo id。
+    config.model.model_name = os.environ.get("GR00T_BACKBONE_PATH", "nvidia/Cosmos-Reason2-2B")
     config.model.backbone_trainable_params_fp32 = True
     config.model.use_relative_action = True
 
@@ -117,9 +119,11 @@ if __name__ == "__main__":
     config.training.weight_decay = ft_config.weight_decay
     config.training.warmup_ratio = ft_config.warmup_ratio
     config.training.wandb_project = ft_config.wandb_project
+    config.training.gradient_checkpointing = ft_config.gradient_checkpointing
 
     config.data.shard_size = ft_config.shard_size
     config.data.episode_sampling_rate = ft_config.episode_sampling_rate
+    config.data.allow_padding = ft_config.allow_padding
     config.data.num_shards_per_epoch = ft_config.num_shards_per_epoch
     config.data.ds_weights_alpha = ft_config.ds_weights_alpha
 

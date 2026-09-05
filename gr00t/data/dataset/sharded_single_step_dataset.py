@@ -231,8 +231,15 @@ class ShardedSingleStepDataset(ShardedDataset):
         self.shard_lengths = shard_lengths
 
     def get_effective_episode_length(self, episode_index: int) -> int:
-        """Get the effective episode length accounting for action horizon."""
+        """Get how many timesteps can start a sample in this episode.
+
+        Without padding, the last ``action_horizon - 1`` frames cannot start a
+        chunk (would go past the episode). With ``allow_padding``, those starts
+        are kept and missing future indices clip to the last frame.
+        """
         original_length = self.episode_loader.get_episode_length(episode_index)
+        if self.allow_padding:
+            return original_length
         return max(0, original_length - self.action_horizon + 1)
 
     def __len__(self):

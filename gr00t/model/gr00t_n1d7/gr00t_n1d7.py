@@ -487,8 +487,65 @@ class Gr00tN1d7ActionHead(nn.Module):
         return BatchFeature(data=batch)
 
 
+def _resolve_backbone_model_name(model_name: str) -> str:
+    """Resolve VLM backbone path baked into a checkpoint.
+
+    Fine-tuned config.json often stores an absolute path from the training
+    machine (e.g. ``/data/gr00t/.../Cosmos-Reason2-2B``). Passing that string
+    to ``from_pretrained`` makes HuggingFace treat it as a repo id and raise
+    ``HFValidationError``. This is a checkpoint/loader bug, not a conda issue.
+    """
+    import os
+
+    candidates: list[str] = []
+    env_path = os.environ.get("GR00T_BACKBONE_PATH")
+    if env_path:
+        candidates.append(os.path.expanduser(env_path))
+    if model_name:
+        candidates.append(os.path.expanduser(model_name))
+    candidates.extend(
+        [
+            os.path.expanduser("~/Isaac-GR00T/nvidia/Cosmos-Reason2-2B"),
+            os.path.expanduser("~/VLA/gr00t_deploy/backbones/nvidia/Cosmos-Reason2-2B"),
+            os.path.expanduser("~/VLA/Isaac-GR00T/checkpoints/Cosmos-Reason2-2B"),
+        ]
+    )
+
+    for path in candidates:
+        if path and os.path.isdir(path):
+            if path != model_name:
+                logger.warning(
+                    "checkpoint backbone path %r is missing; using local %r",
+                    model_name,
+                    path,
+                )
+            return path
+
+    looks_like_missing_path = bool(model_name) and (
+        os.path.isabs(model_name) or model_name.startswith("~")
+    )
+    if looks_like_missing_path and os.path.isdir(os.path.expanduser(model_name)) is False:
+        if "Cosmos-Reason2" in model_name or "Qwen3-VL" in model_name:
+            logger.warning(
+                "checkpoint backbone path %r is missing; falling back to nvidia/Cosmos-Reason2-2B",
+                model_name,
+            )
+            return "nvidia/Cosmos-Reason2-2B"
+        raise FileNotFoundError(
+            f"Backbone path in checkpoint does not exist: {model_name}. "
+            "Copy Cosmos-Reason2-2B locally or set GR00T_BACKBONE_PATH."
+        )
+    return model_name
+
+
 def get_backbone_cls(config: Gr00tN1d7Config):
-    if "nvidia/Cosmos-Reason2" in config.model_name or "Qwen/Qwen3-VL" in config.model_name:
+    import os
+
+    if (
+        os.path.isdir(config.model_name)
+        or "nvidia/Cosmos-Reason2" in config.model_name
+        or "Qwen/Qwen3-VL" in config.model_name
+    ):
         # We import here as Qwen3Backbone depends on newer transformers versions than the rest of the code.
         from gr00t.model.modules.qwen3_backbone import Qwen3Backbone
 
@@ -525,6 +582,7 @@ class Gr00tN1d7(PreTrainedModel):
         """
         super().__init__(config)
         self.config = config
+        config.model_name = _resolve_backbone_model_name(config.model_name)
 
         backbone_cls = get_backbone_cls(config)
         self.backbone = backbone_cls(
