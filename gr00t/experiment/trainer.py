@@ -39,6 +39,8 @@ import torch
 from transformers.trainer import TRAINER_STATE_NAME, Trainer, TrainerState, get_last_checkpoint
 from transformers.trainer_callback import TrainerCallback
 
+from gr00t.experiment.debug_log import action_debug_stats
+
 
 class ProfCallback(TrainerCallback):
     def __init__(self, prof):
@@ -165,6 +167,7 @@ class Gr00tTrainer(Trainer):
         self.action_offset = kwargs.pop("action_offset", None)
         self.multiprocessing_context = kwargs.pop("multiprocessing_context", "fork")
         super().__init__(*args, **kwargs)
+        self._debug_step_t0 = None
 
     def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
         # Hide epoch from logged metrics as it's misleading for Iterable datasets.
@@ -282,6 +285,69 @@ class Gr00tTrainer(Trainer):
 
         # Record last loss for testing purposes.
         self.loss = loss
+
+        import time as _time
+
+        now = _time.monotonic()
+        steptime = None if self._debug_step_t0 is None else (now - self._debug_step_t0)
+        self._debug_step_t0 = now
+
+        action_loss = None
+        action_mask = None
+        if isinstance(outputs, dict):
+            action_loss = outputs.get("action_loss")
+            action_mask = outputs.get("action_mask")
+        else:
+            action_loss = getattr(outputs, "action_loss", None)
+            action_mask = getattr(outputs, "action_mask", None)
+
+        debug_stats = None
+        if (
+            model.training
+            and action_loss is not None
+            and torch.is_tensor(action_loss)
+            and action_loss.ndim == 3
+        ):
+            try:
+                debug_stats = action_debug_stats(action_loss, action_mask)
+            except Exception as exc:
+                logging.warning("GR00T debug log failed: %s", exc)
+
+        if debug_stats is not None:
+            nan_frac = debug_stats.get("training/nan", 0.0)
+            abort = os.environ.get("DEBUG_LOG_NAN_ABORT", "1") != "0"
+            if nan_frac > 0 and abort:
+                raise RuntimeError(
+                    f"NaN/Inf in unreduced action_loss (frac={nan_frac:.4f}) at step {self.state.global_step}"
+                )
+            if not torch.isfinite(loss) and abort:
+                raise RuntimeError(f"NaN/Inf scalar loss at step {self.state.global_step}")
+
+        should_log = (
+            self.state.global_step % max(1, int(self.args.logging_steps)) == 0 and model.training
+        )
+        if should_log and debug_stats is not None and self.args.local_rank in (-1, 0):
+            payload = dict(debug_stats)
+            if steptime is not None:
+                payload["steptime"] = float(steptime)
+            self.log(payload)
+            worst_key = max(
+                ((k, v) for k, v in debug_stats.items() if k.startswith("Action loss dim/")),
+                key=lambda kv: kv[1],
+                default=(None, None),
+            )
+            logging.info(
+                "PROBE step=%s loss=%.6f action=%.6f nan=%.4f worst=%s=%.4f head=%.4f tail=%.4f steptime=%s",
+                self.state.global_step,
+                float(loss.detach()) if torch.is_tensor(loss) else float(loss),
+                debug_stats.get("training/action_loss", float("nan")),
+                debug_stats.get("training/nan", 0.0),
+                worst_key[0],
+                worst_key[1] if worst_key[1] is not None else float("nan"),
+                debug_stats.get("Action loss per_step/head", float("nan")),
+                debug_stats.get("Action loss per_step/tail", float("nan")),
+                f"{steptime:.3f}s" if steptime is not None else "n/a",
+            )
 
         # --------------------------------------------------------------
         # Accuracy calculation
