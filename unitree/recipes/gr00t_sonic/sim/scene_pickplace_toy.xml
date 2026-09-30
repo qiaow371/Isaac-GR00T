@@ -1,0 +1,49 @@
+<mujoco model="g1_43dof pickplace_toy">
+  <!-- 对应 HF SII-ZhangYiFei/G1-WholeBody-PickPlaceToy：pick up the toy and place it on the chair。
+       官方没给物体 mesh，这里用原语近似：地面玩具可抓、椅子固定。 -->
+  <include file="g1_29dof_with_hand.xml"/>
+
+  <statistic center="0.6 0 0.5" extent="2.5"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="-130" elevation="-20"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+      markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+    <material name="chair_wood" rgba="0.45 0.28 0.14 1" specular="0.1"/>
+    <material name="toy_red" rgba="0.85 0.15 0.12 1" specular="0.2"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
+    <site name="com_marker" pos="0.1 0 0" size="0.05" rgba="1 0 0 1" type="sphere"/>
+
+    <!-- 椅子：座面约 0.45 m，在机器人前方 1.15 m -->
+    <body name="chair" pos="1.15 0 0">
+      <geom name="chair_seat" type="box" size="0.22 0.22 0.03" pos="0 0 0.42" material="chair_wood" friction="1.2 0.1 0.01"/>
+      <geom name="chair_back" type="box" size="0.22 0.03 0.22" pos="0 -0.19 0.67" material="chair_wood"/>
+      <geom name="chair_leg_fl" type="box" size="0.025 0.025 0.21" pos=" 0.17  0.17 0.21" material="chair_wood"/>
+      <geom name="chair_leg_fr" type="box" size="0.025 0.025 0.21" pos=" 0.17 -0.17 0.21" material="chair_wood"/>
+      <geom name="chair_leg_bl" type="box" size="0.025 0.025 0.21" pos="-0.17  0.17 0.21" material="chair_wood"/>
+      <geom name="chair_leg_br" type="box" size="0.025 0.025 0.21" pos="-0.17 -0.17 0.21" material="chair_wood"/>
+    </body>
+
+    <!-- 玩具：地上、机器人前方偏右，freejoint 可被拨动/捧起 -->
+    <body name="toy" pos="0.42 -0.12 0.055">
+      <freejoint name="toy_free"/>
+      <geom name="toy_body" type="box" size="0.045 0.035 0.05" mass="0.12" material="toy_red"
+            friction="1.5 0.2 0.02" condim="4" solref="0.02 1"/>
+    </body>
+  </worldbody>
+
+  <default>
+    <geom friction="1.0"/>
+  </default>
+</mujoco>
